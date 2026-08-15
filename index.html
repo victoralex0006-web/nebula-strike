@@ -26,6 +26,7 @@
     top: 0; left: 0; right: 0;
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 12px 16px;
     color: #fff;
@@ -36,6 +37,7 @@
     user-select: none;
   }
   #hud span { background: rgba(0,0,0,0.45); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
+  #player { color: #8ecae6; }
   #score { color: #ffd166; }
   #combo { color: #2ec4b6; }
   #weapon { color: #fff; }
@@ -61,6 +63,49 @@
     background: #333; border: 1px solid #666;
     border-radius: 4px; padding: 2px 7px; font-size: 13px;
   }
+  .name-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    opacity: 0.9;
+  }
+  .name-row .hint { font-size: 12px; opacity: 0.6; }
+  #nameInput {
+    background: rgba(255,255,255,0.08);
+    border: 2px solid #7b2ff7;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 8px 12px;
+    width: 200px;
+    text-align: center;
+    outline: none;
+  }
+  #nameInput:focus { border-color: #9a5bff; }
+  #lb {
+    width: 340px;
+    text-align: left;
+    background: rgba(0,0,0,0.35);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  #lb h3 { text-align: center; letter-spacing: 2px; margin-bottom: 6px; font-size: 14px; color: #ffd166; }
+  #lb .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  #lb .row.top { background: rgba(255,209,102,0.12); }
+  #lb .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+  #lb .row .sc { color: #ffd166; font-weight: bold; }
+  #lb .empty { text-align: center; opacity: 0.6; padding: 6px 0; }
   button {
     background: #7b2ff7;
     color: #fff;
@@ -91,6 +136,7 @@
 <div id="wrap">
   <canvas id="game" width="960" height="540"></canvas>
   <div id="hud">
+    <span id="player">Pilot</span>
     <span id="score">Score: 0</span>
     <span id="combo"></span>
     <span id="weapon">Gun: Blaster</span>
@@ -108,13 +154,20 @@
       <b>S</b>hields for protection, and extra <b>L</b>ives.
       A boss arrives every 5 waves.
     </p>
+    <label class="name-row">
+      <span>Name:</span>
+      <input id="nameInput" maxlength="16" spellcheck="false" autocomplete="off">
+      <span class="hint">U to change mid-game</span>
+    </label>
     <button id="startBtn">Start Game</button>
+    <div id="lb"></div>
   </div>
-  <div id="tip">WASD / arrows to move &nbsp;&middot;&nbsp; hold SPACE to shoot &nbsp;&middot;&nbsp; P to pause</div>
+  <div id="tip">WASD / arrows to move &nbsp;&middot;&nbsp; hold SPACE to shoot &nbsp;&middot;&nbsp; P to pause &nbsp;&middot;&nbsp; U to rename</div>
 </div>
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+const playerEl = document.getElementById('player');
 const scoreEl = document.getElementById('score');
 const comboEl = document.getElementById('combo');
 const weaponEl = document.getElementById('weapon');
@@ -123,6 +176,8 @@ const livesEl = document.getElementById('lives');
 const waveEl = document.getElementById('wave');
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('startBtn');
+const nameInput = document.getElementById('nameInput');
+const lbEl = document.getElementById('lb');
 
 const W = canvas.width;
 const H = canvas.height;
@@ -166,7 +221,54 @@ try {
   best = parseInt(localStorage.getItem('nebula_best') || '0', 10);
 } catch (e) {}
 
+let username = '';
+
 function rand(min, max) { return Math.random() * (max - min) + min; }
+
+function getUsername() {
+  if (username) return username;
+  let name = localStorage.getItem('nebula_name');
+  if (!name) {
+    name = 'Pilot #' + Math.floor(1000 + Math.random() * 9000);
+    try { localStorage.setItem('nebula_name', name); } catch (e) {}
+  }
+  username = name;
+  return username;
+}
+function setUsername(name) {
+  name = (name || '').trim().slice(0, 16) || 'Pilot #' + Math.floor(1000 + Math.random() * 9000);
+  try { localStorage.setItem('nebula_name', name); } catch (e) {}
+  username = name;
+  playerEl.textContent = name;
+  return name;
+}
+function getScores() {
+  try { return JSON.parse(localStorage.getItem('nebula_scores') || '[]'); } catch (e) { return []; }
+}
+function submitScore(name, sc, wv) {
+  if (sc <= 0) return;
+  const list = getScores();
+  list.push({ n: name, s: sc, w: wv, d: Date.now() });
+  list.sort((a, b) => b.s - a.s || a.d - b.d);
+  try { localStorage.setItem('nebula_scores', JSON.stringify(list.slice(0, 10))); } catch (e) {}
+}
+function renderLeaderboard() {
+  const list = getScores();
+  let html = '<h3>&mdash; LEADERBOARD &mdash;</h3>';
+  if (list.length === 0) {
+    html += '<div class="empty">No scores yet &mdash; be the first!</div>';
+  } else {
+    const me = getUsername();
+    list.slice(0, 5).forEach((entry, i) => {
+      const isTop = i === 0;
+      const isMe = entry.n === me;
+      html += `<div class="row${isTop ? ' top' : ''}">` +
+        `<span>${i + 1}. ${entry.n}${isMe ? ' &#9733;' : ''}</span>` +
+        `<span class="sc">${entry.s} (W${entry.w})</span></div>`;
+    });
+  }
+  lbEl.innerHTML = html;
+}
 
 function saveBest() {
   if (score > best) {
@@ -193,13 +295,15 @@ function updateHud() {
 }
 
 class Bullet {
-  constructor(x, y, vx, vy, r, dmg, color, pierce, homing) {
+  constructor(x, y, vx, vy, r, dmg, color, pierce, homing, explode) {
     this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.r = r;
     this.dmg = dmg || 1;
     this.color = color || '#ffd166';
     this.pierce = !!pierce;
     this.pierceLeft = pierce ? 4 : 0;
     this.homing = !!homing;
+    this.explode = !!explode;
+    this.life = this.explode ? 0.7 : 0;
     this.hitList = this.pierce ? [] : null;
   }
   update(dt) {
@@ -227,6 +331,15 @@ class Bullet {
     this.y += this.vy * dt;
   }
   draw() {
+    if (this.explode) {
+      const pulse = 1 + Math.sin(this.y * 0.05 + this.x * 0.05) * 0.12;
+      ctx.fillStyle = this.color;
+      ctx.globalAlpha = 0.2;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r * 2.2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
@@ -316,7 +429,7 @@ class Player {
         }
         break;
       case 2:
-        bullets.push(new Bullet(this.x, this.y - 26, 0, -520, 11, 3, c));
+        bullets.push(new Bullet(this.x, this.y - 26, 0, -520, 11, 3, c, false, false, true));
         break;
       case 3:
         bullets.push(new Bullet(this.x + rand(-3, 3), this.y - 22, rand(-50, 50), -940, 3.5, 1, c));
@@ -753,6 +866,19 @@ function spawnBoom(x, y, n, color, speed) {
   if (particles.length > 500) particles.splice(0, particles.length - 500);
 }
 
+function explodePlasma(b) {
+  spawnBoom(b.x, b.y, 14, WEAPONS[2].color, 300);
+  spawnBoom(b.x, b.y, 5, '#ffffff', 180);
+  const n = 10;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rand(-0.15, 0.15);
+    const sp = rand(300, 480);
+    bullets.push(new Bullet(b.x, b.y, Math.cos(a) * sp, Math.sin(a) * sp, 3.5, 1, WEAPONS[2].color));
+  }
+  sfxBoom();
+  shake = Math.min(12, shake + 4);
+}
+
 function killEnemy(en) {
   const pts = en.points * multiplier();
   score += pts;
@@ -783,7 +909,17 @@ function update(dt) {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
     b.update(dt);
-    if (b.y < -30 || b.x < -30 || b.x > W + 30) { bullets.splice(i, 1); continue; }
+    if (b.explode) b.life -= dt;
+    if (b.y < -20 || b.x < -30 || b.x > W + 30) {
+      if (b.explode) explodePlasma(b);
+      bullets.splice(i, 1);
+      continue;
+    }
+    if (b.explode && b.life <= 0) {
+      explodePlasma(b);
+      bullets.splice(i, 1);
+      continue;
+    }
 
     if (b.homing) {
       let hit = false;
@@ -819,6 +955,7 @@ function update(dt) {
           b.pierceLeft--;
           if (b.pierceLeft <= 0) { bullets.splice(i, 1); consumed = true; break; }
         } else {
+          if (b.explode) explodePlasma(b);
           bullets.splice(i, 1);
           consumed = true;
         }
@@ -835,6 +972,7 @@ function update(dt) {
         b.pierceLeft--;
         if (b.pierceLeft <= 0) bullets.splice(i, 1);
       } else {
+        if (b.explode) explodePlasma(b);
         bullets.splice(i, 1);
       }
       if (boss.hp <= 0) killBoss();
@@ -848,6 +986,7 @@ function update(dt) {
           b.pierceLeft--;
           if (b.pierceLeft <= 0) bullets.splice(i, 1);
         } else {
+          if (b.explode) explodePlasma(b);
           bullets.splice(i, 1);
         }
         score += 30;
@@ -985,6 +1124,7 @@ function hurtPlayer() {
   if (lives <= 0) {
     gameOver = true;
     running = false;
+    submitScore(getUsername(), score, wave);
     saveBest();
     return;
   }
@@ -1095,19 +1235,50 @@ function draw() {
 }
 
 function drawEndScreen(title, sub) {
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#e94560';
-  ctx.font = 'bold 60px Segoe UI';
-  ctx.fillText(title, W / 2, H / 2 - 50);
+  ctx.font = 'bold 58px Segoe UI';
+  ctx.fillText(title, W / 2, 85);
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 28px Segoe UI';
-  ctx.fillText(sub, W / 2, H / 2);
-  ctx.font = '18px Segoe UI';
-  ctx.fillText(`Final Score: ${score}   Wave ${wave}   Best: ${best}`, W / 2, H / 2 + 45);
+  ctx.font = 'bold 26px Segoe UI';
+  ctx.fillText(sub, W / 2, 125);
+  ctx.font = '17px Segoe UI';
+  ctx.fillStyle = '#ffd166';
+  ctx.fillText(`Final Score: ${score}   Wave ${wave}   Best: ${best}`, W / 2, 160);
   ctx.fillStyle = '#2ec4b6';
-  ctx.fillText(best === score && score > 0 ? 'NEW BEST!  Press R to play again' : 'Press R to play again', W / 2, H / 2 + 80);
+  ctx.font = 'bold 19px Segoe UI';
+  ctx.fillText(best === score && score > 0 ? 'NEW BEST!' : '', W / 2, 188);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '15px Segoe UI';
+  ctx.fillText('Press R to play again', W / 2, 212);
+
+  const list = getScores();
+  ctx.fillStyle = '#ffd166';
+  ctx.font = 'bold 18px Segoe UI';
+  ctx.fillText('LEADERBOARD', W / 2, 244);
+  ctx.font = '15px Segoe UI';
+  const me = getUsername();
+  const startY = 268;
+  const leftX = W / 2 - 170;
+  const rightX = W / 2 + 170;
+  for (let i = 0; i < 10; i++) {
+    const entry = list[i];
+    if (!entry) break;
+    const y = startY + i * 20;
+    const isMe = entry.n === me;
+    const isTop = i === 0;
+    if (isMe) {
+      ctx.fillStyle = 'rgba(46,196,182,0.18)';
+      ctx.fillRect(leftX - 8, y - 13, rightX - leftX + 16, 17);
+    }
+    ctx.fillStyle = isTop ? '#ffd166' : isMe ? '#2ec4b6' : '#cfd8dc';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${i + 1}. ${entry.n}${isMe ? ' \u2605' : ''}`, leftX, y);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${entry.s}  (W${entry.w})`, rightX, y);
+  }
   ctx.textAlign = 'left';
 }
 
@@ -1135,6 +1306,10 @@ function gameLoop(t) {
 
 spawnStars();
 resetGame();
+username = getUsername();
+playerEl.textContent = username;
+nameInput.value = username;
+renderLeaderboard();
 
 document.addEventListener('keydown', e => {
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
@@ -1142,6 +1317,13 @@ document.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
   const k = e.key.toLowerCase();
   if (k === 'p' && running && !gameOver) paused = !paused;
+  if (k === 'u' && typeof prompt !== 'undefined') {
+    const n = prompt('Enter your pilot name:', username);
+    if (n !== null) {
+      setUsername(n);
+      renderLeaderboard();
+    }
+  }
   if (k === 'r') {
     resetGame();
     running = true;
@@ -1151,6 +1333,7 @@ document.addEventListener('keyup', e => { keys[e.key] = false; keys[e.key.toLowe
 
 startBtn.addEventListener('click', () => {
   initAudio();
+  username = setUsername(nameInput.value);
   resetGame();
   running = true;
   overlay.classList.add('hidden');
