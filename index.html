@@ -149,8 +149,8 @@
   <div id="overlay">
     <h1>NEBULA STRIKE</h1>
     <p>
-      Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows.
-      Hold <kbd>Space</kbd> to fire. <kbd>P</kbd> pauses.<br>
+      Move with the <kbd>mouse</kbd>.
+      Hold <kbd>Space</kbd> or click to fire. <kbd>P</kbd> pauses.<br>
       Chain kills to build a combo multiplier. Grab <b>P</b> pickups to cycle
       between <b>6 weapons</b> (each with a different color and feel),
       <b>S</b>hields for protection, and extra <b>L</b>ives.
@@ -164,7 +164,7 @@
     <button id="startBtn">Start Game</button>
     <div id="lb"></div>
   </div>
-  <div id="tip">WASD / arrows to move &nbsp;&middot;&nbsp; hold SPACE to shoot &nbsp;&middot;&nbsp; P to pause &nbsp;&middot;&nbsp; U to rename</div>
+  <div id="tip">Mouse to move &nbsp;&middot;&nbsp; hold SPACE or click to shoot &nbsp;&middot;&nbsp; P to pause &nbsp;&middot;&nbsp; U to rename</div>
 </div>
 <script>
 const canvas = document.getElementById('game');
@@ -225,6 +225,9 @@ try {
 
 let username = '';
 let scoresCache = [];
+let mouseX = W / 2;
+let mouseY = H - 90;
+let mouseDown = false;
 
 function rand(min, max) { return Math.random() * (max - min) + min; }
 
@@ -384,17 +387,14 @@ class Player {
     this.tilt = 0;
   }
   update(dt) {
-    let mx = 0, my = 0;
-    if (keys['a'] || keys['ArrowLeft']) mx -= 1;
-    if (keys['d'] || keys['ArrowRight']) mx += 1;
-    if (keys['w'] || keys['ArrowUp']) my -= 1;
-    if (keys['s'] || keys['ArrowDown']) my += 1;
-    if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
-    this.x += mx * this.speed * dt;
-    this.y += my * this.speed * dt;
+    const lerp = 1 - Math.pow(0.0005, dt);
+    const prevX = this.x;
+    this.x += (mouseX - this.x) * lerp;
+    this.y += (mouseY - this.y) * lerp;
     this.x = Math.max(30, Math.min(W - 30, this.x));
     this.y = Math.max(30, Math.min(H - 30, this.y));
-    this.tilt += (mx * 0.5 - this.tilt) * Math.min(1, dt * 8);
+    const mx = (this.x - prevX) / (this.speed * dt || 1);
+    this.tilt += (Math.max(-1, Math.min(1, mx * 2)) * 0.5 - this.tilt) * Math.min(1, dt * 8);
     this.muzzle = Math.max(0, this.muzzle - dt);
 
     this.thrustTimer -= dt;
@@ -408,7 +408,7 @@ class Player {
       });
     }
 
-    if ((keys[' '] || keys['j']) && this.fireTimer <= 0) {
+    if ((keys[' '] || keys['j'] || mouseDown) && this.fireTimer <= 0) {
       this.fireTimer = WEAPONS[this.weapon].rate;
       this.fire();
       this.muzzle = 0.06;
@@ -1334,6 +1334,15 @@ document.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('keyup', e => { keys[e.key] = false; keys[e.key.toLowerCase()] = false; });
+
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouseX = (e.clientX - r.left) * (W / r.width);
+  mouseY = (e.clientY - r.top) * (H / r.height);
+});
+canvas.addEventListener('mousedown', e => { if (e.button === 0) mouseDown = true; });
+canvas.addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
+canvas.addEventListener('mouseleave', () => { mouseDown = false; });
 
 startBtn.addEventListener('click', () => {
   initAudio();
