@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nebula Strike</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -222,6 +224,7 @@ try {
 } catch (e) {}
 
 let username = '';
+let scoresCache = [];
 
 function rand(min, max) { return Math.random() * (max - min) + min; }
 
@@ -243,14 +246,16 @@ function setUsername(name) {
   return name;
 }
 function getScores() {
-  try { return JSON.parse(localStorage.getItem('nebula_scores') || '[]'); } catch (e) { return []; }
+  return scoresCache;
 }
 function submitScore(name, sc, wv) {
   if (sc <= 0) return;
-  const list = getScores();
-  list.push({ n: name, s: sc, w: wv, d: Date.now() });
-  list.sort((a, b) => b.s - a.s || a.d - b.d);
-  try { localStorage.setItem('nebula_scores', JSON.stringify(list.slice(0, 10))); } catch (e) {}
+  const entry = { n: name, s: sc, w: wv, d: Date.now() };
+  scoresCache.push(entry);
+  scoresCache.sort((a, b) => b.s - a.s || a.d - b.d);
+  scoresCache = scoresCache.slice(0, 50);
+  try { localStorage.setItem('nebula_scores', JSON.stringify(scoresCache.slice(0, 10))); } catch (e) {}
+  pushScoreToFirebase(entry);
 }
 function renderLeaderboard() {
   const list = getScores();
@@ -1339,6 +1344,58 @@ startBtn.addEventListener('click', () => {
   overlay.classList.add('hidden');
 });
 
+const firebaseConfig = {
+  apiKey: "AIzaSyCs2odcxQAbkMJkGd34-X2gSKuUzXIMDZ0",
+  authDomain: "nebula-strike-40543.firebaseapp.com",
+  projectId: "nebula-strike-40543",
+  storageBucket: "nebula-strike-40543.firebasestorage.app",
+  messagingSenderId: "392076541900",
+  appId: "1:392076541900:web:2b6fb3faa2645c36cf2769",
+  measurementId: "G-PMYV52C0X7"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const scoresRef = db.ref('scores');
+
+function pushScoreToFirebase(entry) {
+  scoresRef.push(entry).catch(() => {});
+}
+
+function loadScoresFromFirebase() {
+  return scoresRef.orderByChild('s').limitToLast(50).once('value').then(snap => {
+    const online = [];
+    snap.forEach(child => { online.push(child.val()); });
+    online.sort((a, b) => b.s - a.s || a.d - b.d);
+    scoresCache = online.slice(0, 50);
+    try { localStorage.setItem('nebula_scores', JSON.stringify(scoresCache.slice(0, 10))); } catch (e) {}
+    renderLeaderboard();
+  }).catch(() => {
+    try { scoresCache = JSON.parse(localStorage.getItem('nebula_scores') || '[]'); } catch (e) { scoresCache = []; }
+  });
+}
+
+scoresRef.orderByChild('s').limitToLast(50).on('value', snap => {
+  const online = [];
+  snap.forEach(child => { online.push(child.val()); });
+  online.sort((a, b) => b.s - a.s || a.d - b.d);
+  scoresCache = online.slice(0, 50);
+  renderLeaderboard();
+});
+
+function mergeLocalScoresToFirebase() {
+  try {
+    const local = JSON.parse(localStorage.getItem('nebula_scores') || '[]');
+    if (local.length === 0) return;
+    const batch = {};
+    local.forEach((entry, i) => {
+      const key = scoresRef.push().key;
+      batch[key] = entry;
+    });
+    scoresRef.update(batch).catch(() => {});
+  } catch (e) {}
+}
+
+loadScoresFromFirebase().then(() => { mergeLocalScoresToFirebase(); });
 requestAnimationFrame(gameLoop);
 </script>
 </body>
