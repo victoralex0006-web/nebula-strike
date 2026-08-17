@@ -254,7 +254,6 @@ function submitScore(name, sc, wv) {
   scoresCache.push(entry);
   scoresCache.sort((a, b) => b.s - a.s || a.d - b.d);
   scoresCache = scoresCache.slice(0, 50);
-  try { localStorage.setItem('nebula_scores', JSON.stringify(scoresCache.slice(0, 10))); } catch (e) {}
   pushScoreToFirebase(entry);
 }
 function renderLeaderboard() {
@@ -1367,7 +1366,6 @@ function loadScoresFromFirebase() {
     snap.forEach(child => { online.push(child.val()); });
     online.sort((a, b) => b.s - a.s || a.d - b.d);
     scoresCache = online.slice(0, 50);
-    try { localStorage.setItem('nebula_scores', JSON.stringify(scoresCache.slice(0, 10))); } catch (e) {}
     renderLeaderboard();
   }).catch(() => {
     try { scoresCache = JSON.parse(localStorage.getItem('nebula_scores') || '[]'); } catch (e) { scoresCache = []; }
@@ -1384,14 +1382,17 @@ scoresRef.orderByChild('s').limitToLast(50).on('value', snap => {
 
 function mergeLocalScoresToFirebase() {
   try {
+    if (localStorage.getItem('nebula_merged')) return;
     const local = JSON.parse(localStorage.getItem('nebula_scores') || '[]');
-    if (local.length === 0) return;
+    if (local.length === 0) { localStorage.setItem('nebula_merged', '1'); return; }
     const batch = {};
     local.forEach((entry, i) => {
       const key = scoresRef.push().key;
       batch[key] = entry;
     });
-    scoresRef.update(batch).catch(() => {});
+    scoresRef.update(batch).then(() => {
+      localStorage.setItem('nebula_merged', '1');
+    }).catch(() => {});
   } catch (e) {}
 }
 
